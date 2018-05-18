@@ -9,7 +9,7 @@ class LSTM_CNN(nn.Module):
         super(LSTM_CNN, self).__init__()
         self.embedding_dim = embedding_vector.size(1)
         self.hidden_size = 32
-        self.filter_sizes = [3]
+        self.filter_sizes = [3, 4, 5]
         self.num_filters = 32
         self.total_num_filters = len(self.filter_sizes) * self.num_filters
 
@@ -29,6 +29,10 @@ class LSTM_CNN(nn.Module):
             ('nonlin3' + chr(ord('a') + i), nonlin()),
             ('maxpool3' + chr(ord('a') + i), nn.MaxPool2d((8 - kernel_size, 1), stride=1)),
         ])) for i, kernel_size in enumerate(self.filter_sizes)]
+
+
+
+
         # output: (m, total_num_filters, seq_len`, hidden_size)
 
         # input: (m, total_num_filters * hidden_size)

@@ -10,9 +10,8 @@ http://nlp.stanford.edu/projects/glove/preprocess-twitter.rb
 """
 
 import regex as re
-import spacy
+import nltk
 
-spacy_en = spacy.load('en')
 FLAGS = re.MULTILINE | re.DOTALL
 
 
@@ -31,7 +30,7 @@ def allcaps(text):
     return text.lower() + " <allcaps>"
 
 
-def tokenize(text):
+def preprocess(text):
     # Different regex parts for smiley faces
     eyes = r"[8:=;]"
     nose = r"['`\-]?"
@@ -61,4 +60,14 @@ def tokenize(text):
 
 
 def tokenizer(text):
-    return [tok.text for tok in spacy_en.tokenizer(tokenize(text))]
+    # return [tok for tok in preprocess(text).split()]
+    # return [tok for tok in nltk.word_tokenize(preprocess(text))]
+    # return [tok for tok in nltk.regexp_tokenize(preprocess(text), r'<user>|<repeat>|<hashtag>|<number>|<url>|<allcaps>|<elong>|<smile>|<sadface>|<heart>|<lolface>|<neutralface>|\w+|[^\w\s]+')]
+    return [tok for tok in nltk.regexp_tokenize(preprocess(text), r'<\w+?>|\w+|[^\w\s]+')]
+
+
+if __name__ == '__main__':
+    text = "I TEST alllll kinds of #hashtags and #HASHTAGS, @mentions and 3000 (http://t.co/dkfjkdf). w/ <3 :) haha!!!!!"
+    print(preprocess(text))
+    tokens = tokenizer(text)
+    print(tokens)
