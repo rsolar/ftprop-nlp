@@ -21,6 +21,8 @@ from torch.autograd import Variable
 
 import targetprop as tp
 from activations import Sign11, qReLU, ThresholdReLU
+from models.cnn import CNN
+from models.cnn_lstm import CNN_LSTM
 from models.lstm import LSTM
 from models.lstm_cnn import LSTM_CNN
 from utils.datasethelper import create_datasets
@@ -43,7 +45,7 @@ def main():
     parser.add_argument('--test-model', type=str,
                         help='specify the filename of a pre-trained model,  which will be loaded '
                              'and evaluated on the test set of the specified dataset')
-    parser.add_argument('--arch', type=str, choices=('lstm', 'lstm-cnn'),
+    parser.add_argument('--arch', type=str, choices=('cnn', 'lstm', 'cnn-lstm', 'lstm-cnn'),
                         help='model architecture to use')
     parser.add_argument('--nonlin', type=str, choices=('sign11', 'qrelu', 'relu', 'threshrelu'),
                         help='non-linearity to use in the specified architecture')
@@ -377,11 +379,21 @@ def create_model(args, num_classes, embedding_vector):
     else:
         raise NotImplementedError('no other non-linearities currently supported')
 
+    # input size
+    if args.ds == 'tsad':
+        input_shape = (1, 60, 50)
+    else:
+        raise NotImplementedError('no other datasets currently supported')
+
     # create a model with the specified architecture
-    if args.arch == 'lstm':
-        model = LSTM(embedding_vector, num_classes)
+    if args.arch == 'cnn':
+        model = CNN(input_shape, num_classes, embedding_vector, nonlin=nonlin)
+    elif args.arch == 'lstm':
+        model = LSTM(input_shape, num_classes, embedding_vector)
+    elif args.arch == 'cnn-lstm':
+        model = CNN_LSTM(input_shape, num_classes, embedding_vector, nonlin=nonlin)
     elif args.arch == 'lstm-cnn':
-        model = LSTM_CNN(embedding_vector, num_classes, nonlin=nonlin)
+        model = LSTM_CNN(input_shape, num_classes, embedding_vector, nonlin=nonlin)
     else:
         raise NotImplementedError('other models not yet supported')
 

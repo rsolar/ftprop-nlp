@@ -26,14 +26,14 @@ def create_datasets(ds_name, batch_size, no_val_set, use_cuda, seed):
 
 
 def create_tsad_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.01, test_pct=0.01,
-                        data_dir='', download=False, create_val=True):
+                        data_dir='', download=False, create_val=True, max_len=60):
     device = -1
     torch.manual_seed(seed)
     if use_cuda:
         device = None
         torch.cuda.manual_seed(seed)
 
-    text_field = Field(sequential=True, use_vocab=True, tokenize=tokenizer, batch_first=True)
+    text_field = Field(sequential=True, use_vocab=True, fix_length=max_len, tokenize=tokenizer, batch_first=True)
     label_field = Field(sequential=False, use_vocab=False, batch_first=True)
 
     all_ds = ds(data_dir, text_field, label_field, download=download)
