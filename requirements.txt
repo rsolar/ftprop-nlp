@@ -1,4 +1,5 @@
 numpy
+regex
 torch
 torchtext
 nltk
