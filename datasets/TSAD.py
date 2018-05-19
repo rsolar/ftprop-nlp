@@ -6,8 +6,8 @@ from torchtext.data import TabularDataset
 class TSAD(TabularDataset):
     urls = ['http://thinknook.com/wp-content/uploads/2012/09/Sentiment-Analysis-Dataset.zip']
     dirname = ''
-    # filename = 'Sentiment Analysis Dataset.csv'
-    filename = 'Sentiment Analysis Dataset_small.csv'
+    filename = 'Sentiment Analysis Dataset.csv'
+    # filename = 'Sentiment Analysis Dataset_small.csv'
     name = ''
 
     def __init__(self, root, text_field, label_field, download=False, **kwargs):

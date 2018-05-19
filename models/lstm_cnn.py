@@ -50,7 +50,7 @@ class LSTM_CNN(nn.Module):
 
         x, _ = self.lstm(x)
 
-        x.unsqueeze_(dim=1)
+        x = x.unsqueeze(dim=1)
         x = torch.cat([conv(x) for conv in self.convs], dim=1)
 
         x = x.view(x.size(0), -1)
