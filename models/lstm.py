@@ -11,7 +11,7 @@ class LSTM(nn.Module):
 
         # input: (m, seq_len)
         self.embedding = nn.Sequential(OrderedDict([
-            ('embed1', nn.Embedding.from_pretrained(embedding_vector)),
+            ('embed1', nn.Embedding.from_pretrained(embedding_vector, freeze=False)),
         ]))
         # output: (m, seq_len, embedding_dim)
 

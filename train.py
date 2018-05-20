@@ -160,7 +160,7 @@ def main():
         logging.info('created {} model:\n {}'.format(arch_str, model))
         logging.info("{} model has {} parameters".format(arch_str,
                                                          sum([p.data.nelement() for p in model.parameters()])))
-        print('num params: ', [p.data.nelement() for p in model.parameters()])
+        print('num params: ', {n: p.data.nelement() for n, p in model.named_parameters()})
 
         # ----- create optimizer -----
         optimizer = get_optimizer(model, args)
@@ -203,6 +203,11 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
     epoch = 1
     best_model_state = None
     timer = partial(timer_context, timers_dict=timers)
+
+    if isinstance(lr_decay_epochs, int):
+        lr_scheduler = optim.lr_scheduler.StepLR(optimizer, lr_decay_epochs, gamma=lr_decay)
+    else:
+        lr_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, lr_decay_epochs, gamma=lr_decay)
 
     def train_epoch(epoch):
         model.train()
@@ -268,7 +273,7 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
         # run the train + test loop for <num_epochs> iterations
         for epoch in range(1, num_epochs + 1):
             is_best = False
-            exp_lr_scheduler(optimizer, epoch, lr_decay=lr_decay, lr_decay_epoch=lr_decay_epochs)
+            lr_scheduler.step()
 
             with timer('train'):
                 train_epoch(epoch)
@@ -326,23 +331,11 @@ def test_model(model, loss_function, data_loader, use_cuda, log_results=True):
     loss /= nsamples
 
     if log_results:
-        log_str = '\nTest set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%)' \
+        log_str = 'Test set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%)' \
             .format(loss, num_correct, nsamples, test_acc)
         logging.info(log_str)
 
     return loss, test_acc
-
-
-def exp_lr_scheduler(optimizer, cur_epoch, lr_decay=0.1, lr_decay_epoch=7):
-    """Decay learning rate by a factor of <lr_decay> every <lr_decay_epoch> epochs"""
-    if ((isinstance(lr_decay_epoch, int) and cur_epoch % lr_decay_epoch == 0)
-            or (isinstance(lr_decay_epoch, list) and cur_epoch in lr_decay_epoch)):
-        logging.info('decaying learning rate by a factor of %g' % lr_decay)
-        sub_optimizers = [optimizer]
-        for opt in sub_optimizers:
-            for param_group in opt.param_groups:
-                param_group['lr'] *= lr_decay
-    return optimizer
 
 
 def get_loss_function(loss_str):
