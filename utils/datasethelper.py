@@ -20,7 +20,7 @@ def create_datasets(ds_name, batch_size, no_val_set, use_cuda, seed):
         num_classes = 2
     elif ds_name == 'sentiment140':
         ds = Sentiment140
-        create_ds_func = partial(create_sentiment140_dataset, ds=ds, val_pct=0.01,
+        create_ds_func = partial(create_sentiment140_dataset, ds=ds, val_pct=0.01, test_pct=0.01,
                                  data_dir='data/' + ds_name, download=True)
         num_classes = 3
     else:
@@ -65,7 +65,7 @@ def create_tsad_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.01, test_
     return train_loader, val_loader, test_loader, embedding_vector
 
 
-def create_sentiment140_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.01,
+def create_sentiment140_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.01, test_pct=0.01,
                                 data_dir='', download=False, create_val=True, max_len=60):
     device = -1
     torch.manual_seed(seed)
@@ -78,8 +78,9 @@ def create_sentiment140_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.0
     label_field = Field(sequential=False, use_vocab=False, batch_first=True,
                         postprocessing=lambda x, y, z: [t / 2 for t in x])
 
-    train_ds = ds(data_dir, text_field, label_field, train=True, download=download)
-    test_ds = ds(data_dir, text_field, label_field, train=False, download=False)
+    all_ds = ds(data_dir, text_field, label_field, train=True, download=download)
+
+    train_ds, test_ds = all_ds.split(split_ratio=1.0 - test_pct, stratified=True, strata_field='label')
     if create_val:
         total_len = len(train_ds)
         train_ds, val_ds = train_ds.split(split_ratio=1.0 - val_pct, stratified=True, strata_field='label')
