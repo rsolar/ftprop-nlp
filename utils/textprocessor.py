@@ -1,73 +1,22 @@
-# https://gist.github.com/ppope/0ff9fa359fb850ecf74d061f3072633a
-"""
-preprocess-twitter.py
-python preprocess-twitter.py "Some random text with #hashtags, @mentions and http://t.co/kdjfkdjf (links). :)"
-Script for preprocessing tweets by Romain Paulus
-with small modifications by Jeffrey Pennington
-with translation to Python by Motoki Wu
-Translation of Ruby script to create features for GloVe vectors for Twitter data.
-http://nlp.stanford.edu/projects/glove/preprocess-twitter.rb
-"""
+import re
+from string import punctuation
 
-import regex as re
-import nltk
-
-FLAGS = re.MULTILINE | re.DOTALL
+from nltk.tokenize import casual_tokenize
 
 
-def hashtag(text):
-    text = text.group()
-    hashtag_body = text[1:]
-    if hashtag_body.isupper():
-        result = " {} ".format(hashtag_body.lower())
-    else:
-        result = " ".join(["<hashtag>"] + re.split(r"(?=[A-Z])", hashtag_body, flags=FLAGS))
-    return result
+def clean_tweet(tweet):
+    tweet = re.sub(r"https?://\S+", "", tweet)
+    toks = casual_tokenize(tweet, preserve_case=False, reduce_len=True, strip_handles=True)
+    toks = [''.join(c for c in s if c not in punctuation) for s in toks]
+    toks = [s for s in toks if s]
+    return toks
 
 
-def allcaps(text):
-    text = text.group()
-    return text.lower() + " <allcaps>"
-
-
-def preprocess(text):
-    # Different regex parts for smiley faces
-    eyes = r"[8:=;]"
-    nose = r"['`\-]?"
-
-    # function so code less repetitive
-    def re_sub(pattern, repl):
-        return re.sub(pattern, repl, text, flags=FLAGS)
-
-    text = re_sub(r"https?:\/\/\S+\b|www\.(\w+\.)+\S*", "<url>")
-    text = re_sub(r"@\w+", "<user>")
-    text = re_sub(r"{}{}[)dD]+|[)dD]+{}{}".format(eyes, nose, nose, eyes), "<smile>")
-    text = re_sub(r"{}{}p+".format(eyes, nose), "<lolface>")
-    text = re_sub(r"{}{}\(+|\)+{}{}".format(eyes, nose, nose, eyes), "<sadface>")
-    text = re_sub(r"{}{}[\/|l*]".format(eyes, nose), "<neutralface>")
-    text = re_sub(r"/", " / ")
-    text = re_sub(r"<3", "<heart>")
-    text = re_sub(r"[-+]?[.\d]*[\d]+[:,.\d]*", "<number>")
-    text = re_sub(r"#\S+", hashtag)
-    text = re_sub(r"([!?.]){2,}", r"\1 <repeat>")
-    text = re_sub(r"\b(\S*?)(.)\2{2,}\b", r"\1\2 <elong>")
-
-    # I just don't understand why the Ruby script adds <allcaps> to everything so I limited the selection.
-    # text = re_sub(r"([^a-z0-9()<>'`\-]){2,}", allcaps)
-    text = re_sub(r"([A-Z]){2,}", allcaps)
-
-    return text.lower()
-
-
-def tokenizer(text):
-    # return [tok for tok in preprocess(text).split()]
-    # return [tok for tok in nltk.word_tokenize(preprocess(text))]
-    # return [tok for tok in nltk.regexp_tokenize(preprocess(text), r'<user>|<repeat>|<hashtag>|<number>|<url>|<allcaps>|<elong>|<smile>|<sadface>|<heart>|<lolface>|<neutralface>|\w+|[^\w\s]+')]
-    return [tok for tok in nltk.regexp_tokenize(preprocess(text), r'<\w+?>|\w+|[^\w\s]+')]
+def tokenize(text):
+    return [tok for tok in clean_tweet(text)]
 
 
 if __name__ == '__main__':
-    text = "I TEST alllll kinds of #hashtags and #HASHTAGS, @mentions and 3000 (http://t.co/dkfjkdf). w/ <3 :) haha!!!!!"
-    print(preprocess(text))
-    tokens = tokenizer(text)
-    print(tokens)
+    print(clean_tweet("RT @ #happyfuncoding: this is a typical Twitter tweet :-)"))
+    print(clean_tweet("HTML entities &amp; other Web oddities can be an &aacute;cute <em class='grumpy'>pain</em> >:(')"))
+    print(clean_tweet("It's perhaps noteworthy that phone numbers like +1 (800) 123-4567, (800) 123-4567, and 123-4567 are treated as words despite their whitespace."))

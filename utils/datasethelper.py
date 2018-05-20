@@ -7,7 +7,7 @@ from datasets.sentiment140 import Sentiment140
 from datasets.tsad import TSAD
 from utils.bucketiteratorwrapper import BucketIteratorWrapper
 from utils.embedprocessor import initialize_embedding
-from utils.textprocessor import tokenizer
+from utils.textprocessor import tokenize
 
 
 def create_datasets(ds_name, batch_size, no_val_set, use_cuda, seed):
@@ -22,7 +22,7 @@ def create_datasets(ds_name, batch_size, no_val_set, use_cuda, seed):
         ds = Sentiment140
         create_ds_func = partial(create_sentiment140_dataset, ds=ds, val_pct=0.01, test_pct=0.01,
                                  data_dir='data/' + ds_name, download=True)
-        num_classes = 3
+        num_classes = 2
     else:
         raise NotImplementedError("'{}' datasets is not supported".format(ds_name))
 
@@ -39,7 +39,7 @@ def create_tsad_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.01, test_
         device = None
         torch.cuda.manual_seed(seed)
 
-    text_field = Field(sequential=True, use_vocab=True, fix_length=max_len, tokenize=tokenizer, batch_first=True)
+    text_field = Field(sequential=True, use_vocab=True, fix_length=max_len, tokenize=tokenize, batch_first=True)
     label_field = Field(sequential=False, use_vocab=False, batch_first=True)
 
     all_ds = ds(data_dir, text_field, label_field, download=download)
@@ -52,7 +52,7 @@ def create_tsad_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.01, test_
     else:
         val_ds = None
 
-    text_field.build_vocab(train_ds, vectors="glove.twitter.27B.50d")
+    text_field.build_vocab(train_ds, vectors="glove.6B.50d")
     initialize_embedding(text_field.vocab)
     embedding_vector = text_field.vocab.vectors
 
@@ -74,9 +74,9 @@ def create_sentiment140_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.0
         torch.cuda.manual_seed(seed)
 
     text_field = Field(sequential=True, use_vocab=True, batch_first=True,
-                       fix_length=max_len, tokenize=tokenizer)
+                       fix_length=max_len, tokenize=tokenize)
     label_field = Field(sequential=False, use_vocab=False, batch_first=True,
-                        postprocessing=lambda x, y, z: [t / 2 for t in x])
+                        postprocessing=lambda x, y, z: [t / 4 for t in x])
 
     all_ds = ds(data_dir, text_field, label_field, train=True, download=download)
 
@@ -88,7 +88,7 @@ def create_sentiment140_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.0
     else:
         val_ds = None
 
-    text_field.build_vocab(train_ds, vectors="glove.twitter.27B.50d")
+    text_field.build_vocab(train_ds, vectors="glove.6B.50d")
     initialize_embedding(text_field.vocab)
     embedding_vector = text_field.vocab.vectors
 
