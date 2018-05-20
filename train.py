@@ -36,7 +36,7 @@ best_model_name = 'best_model.pth.tar'
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--ds', type=str, default='tsad', choices=('tsad',),
+    parser.add_argument('--ds', type=str, default='sentiment140', choices=('sentiment140', 'tsad'),
                         help='dataset on which to train')
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='if specified, do not create a validation set and use it to choose the best model, '
@@ -380,7 +380,7 @@ def create_model(args, num_classes, embedding_vector):
         raise NotImplementedError('no other non-linearities currently supported')
 
     # input size
-    if args.ds == 'tsad':
+    if args.ds == 'sentiment140' or args.ds == 'tsad':
         input_shape = (1, 60, 50)
     else:
         raise NotImplementedError('no other datasets currently supported')

@@ -4,7 +4,7 @@ import torch
 import torch.nn as nn
 
 
-def initialize_embedding(vocab, num_special_toks=0):
+def initialize_embedding(vocab, num_special_toks=2):
     emb_vectors = vocab.vectors
     sweep_range = len(vocab)
     running_norm = 0.
