@@ -19,7 +19,7 @@ import torch.optim as optim
 import torch.utils.backcompat as backcompat
 from torch.autograd import Variable
 
-import targetprop as tp
+import targetprop
 from activations import Sign11, qReLU, ThresholdReLU
 from models.cnn import CNN
 from models.cnn_lstm import CNN_LSTM
@@ -53,7 +53,7 @@ def main():
     parser.add_argument('--loss', type=str, default='crossent', choices=('crossent',),
                         help='the loss function to use for training')
 
-    parser.add_argument('--tp-rule', type=str, default='SoftHinge', choices=[e.name for e in tp.TPRule],
+    parser.add_argument('--tp-rule', type=str, default='SoftHinge', choices=[e.name for e in targetprop.TPRule],
                         help='the TargetProp rule to use')
 
     parser.add_argument('--batch', type=int, default=64,
@@ -98,7 +98,7 @@ def main():
         args.save = args.save + '_test'
         args.no_val = True
 
-    args.tp_rule = tp.TPRule[args.tp_rule]
+    args.tp_rule = targetprop.TPRule[args.tp_rule]
 
     gpu_str = ','.join(str(g) for g in args.gpus)
     if not args.no_cuda:
@@ -147,7 +147,10 @@ def main():
         create_datasets(args.ds, args.batch, args.no_val, args.cuda, seed)
 
     metrics = {'loss': Metric('loss', float('inf'), False),
-               'acc': Metric('acc', 0.0, True)}
+               'acc': Metric('acc', 0.0, True),
+               'p': Metric('p', 0.0, True),
+               'r': Metric('r', 0.0, True),
+               'f1': Metric('f1', 0.0, True)}
     metrics = {'train': deepcopy(metrics), 'val': deepcopy(metrics), 'test': deepcopy(metrics)}
 
     # ----- create loss function -----
@@ -196,7 +199,7 @@ def main():
     logging.info("log file: '{}.log'".format(args.save))
     logging.info("log dir: '{}'".format(args.save))
     if not args.test_model:
-        logging.info("best accuracy model: '{}'".format(os.path.join(args.save, best_model_name)))
+        logging.info("best F1 score model: '{}'".format(os.path.join(args.save, best_model_name)))
 
 
 def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_loader, test_loader,
@@ -237,33 +240,51 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
                 optimizer.step()
 
             with timer('output'):
-                top_pred = output.max(dim=1)[1]
-                acc = 100.0 * top_pred.eq(target.data).float().cpu().mean().item()
                 assert target.dim() == 1
+                top_pred = output.max(dim=1)[1]
+                # acc = 100.0 * top_pred.eq(target.data).float().cpu().mean().item()
+
+                tp = ((top_pred == 1) & (target.data == 1)).cpu().sum().item()
+                tn = ((top_pred == 0) & (target.data == 0)).cpu().sum().item()
+                fp = ((top_pred == 1) & (target.data == 0)).cpu().sum().item()
+                fn = ((top_pred == 0) & (target.data == 1)).cpu().sum().item()
+
+                acc = 100.0 * (tp + tn) / (tp + tn + fp + fn)
+                p = tp / (tp + fp)
+                r = tp / (tp + fn)
+                f1 = 2 * r * p / (r + p)
 
                 metrics['train']['loss'].update(lossf, epoch)
                 metrics['train']['acc'].update(acc, epoch)
+                metrics['train']['p'].update(p, epoch)
+                metrics['train']['r'].update(r, epoch)
+                metrics['train']['f1'].update(f1, epoch)
 
             with timer('output'):
                 if num_batches <= 5 or (batch_idx % (num_batches // 5)) == 0:
-                    logging.info("Train epoch {} [{}/{} ({:.0f}%)]:\t loss = {:.6f}, accuracy = {:.2f}"
+                    logging.info("Train epoch {} [{}/{} ({:.0f}%)]:\t loss = {:.6f}, accuracy = {:.2f}, "
+                                 "p = {:.4f}, r = {:.4f}, F1 = {:.4f}"
                                  .format(epoch, (batch_idx + 1) * len(data), ds_size,
-                                         100. * (batch_idx + 1) / len(train_loader), lossf, acc))
+                                         100. * (batch_idx + 1) / len(train_loader), lossf, acc, p, r, f1))
 
     def test(epoch, data_loader, is_val):
         ds_size = len(data_loader.dataset)
-        test_loss, acc = test_model(model, loss_function, data_loader, use_cuda, False)
+        test_loss, acc, p, r, f1 = test_model(model, loss_function, data_loader, use_cuda, False)
         with timer('output'):
             if is_val:
                 print('')
-            logging.info('{} set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%)'
+            logging.info('{} set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%), '
+                         "p = {:.4f}, r = {:.4f}, F1 = {:.4f}"
                          .format('Validation' if is_val else 'Test', test_loss,
-                                 round(acc * ds_size / 100), ds_size, acc))
+                                 round(acc * ds_size / 100), ds_size, acc, p, r, f1))
             print('')
 
         ds_name = 'val' if is_val else 'test'
         metrics[ds_name]['loss'].update(test_loss, epoch)
-        is_best = metrics[ds_name]['acc'].update(acc, epoch)
+        metrics[ds_name]['acc'].update(acc, epoch)
+        metrics[ds_name]['p'].update(p, epoch)
+        metrics[ds_name]['r'].update(r, epoch)
+        is_best = metrics[ds_name]['f1'].update(f1, epoch)
         nonlocal best_model_state
         if is_val and is_best:
             best_model_state = deepcopy(model.state_dict())
@@ -301,9 +322,9 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
     finally:
         for ds_name in ['train'] + (['val'] if val_loader is not None else []) \
                        + (['test'] if test_loader is not None else []):
-            logging.info('best {} accuracy: {:.2f}% occurred on epoch {} / {}'
-                         .format(ds_name, metrics[ds_name]['acc'].val,
-                                 metrics[ds_name]['acc'].tag, epoch))
+            logging.info('best {} F1 score: {:.4f} occurred on epoch {} / {}'
+                         .format(ds_name, metrics[ds_name]['f1'].val,
+                                 metrics[ds_name]['f1'].tag, epoch))
 
         logging.info('timings: {}'.format(', '.join('{}: {:.3f}s'.format(*tt) for tt in
                                                     zip(timers.keys(), timers.values()))))
@@ -317,7 +338,7 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
 
 def test_model(model, loss_function, data_loader, use_cuda, log_results=True):
     model.eval()
-    loss, num_correct, nsamples = 0, 0, len(data_loader.dataset)
+    loss, nsamples, tp, tn, fp, fn = 0, len(data_loader.dataset), 0, 0, 0, 0
     with torch.no_grad():
         for data, target in data_loader:
             if use_cuda:
@@ -327,16 +348,27 @@ def test_model(model, loss_function, data_loader, use_cuda, log_results=True):
             batch_loss = torch.squeeze(loss_function(output, target)).item()
             loss += batch_loss * data.size(0)
             output, target = output.data, target.data
-            num_correct += output.max(1)[1].eq(target).float().cpu().sum().item()
-    test_acc = 100. * num_correct / nsamples
+            # num_correct += output.max(dim=1)[1].eq(target).float().cpu().sum().item()
+            top_pred = output.max(dim=1)[1]
+            tp += ((top_pred == 1) & (target == 1)).cpu().sum().item()
+            tn += ((top_pred == 0) & (target == 0)).cpu().sum().item()
+            fp += ((top_pred == 1) & (target == 0)).cpu().sum().item()
+            fn += ((top_pred == 0) & (target == 1)).cpu().sum().item()
+
+    assert tp + tn + fp + fn == nsamples
     loss /= nsamples
+    acc = 100.0 * (tp + tn) / nsamples
+    p = tp / (tp + fp)
+    r = tp / (tp + fn)
+    f1 = 2 * r * p / (r + p)
 
     if log_results:
-        log_str = 'Test set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%)' \
-            .format(loss, num_correct, nsamples, test_acc)
+        log_str = 'Test set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%), ' \
+                  'p = {:.4f}, r = {:.4f}, F1 = {:.4f}'\
+            .format(loss, tp + tn, nsamples, acc, p, r, f1)
         logging.info(log_str)
 
-    return loss, test_acc
+    return loss, acc, p, r, f1
 
 
 def get_loss_function(loss_str):
@@ -432,7 +464,7 @@ def checkpoint_model(epoch, model, opt, args, log_dir, metrics, timers, is_best)
             os.remove(prev_cp)
     else:
         logging.info("model checkpoints will be saved to file '{}' after each epoch".format(cp_name.format(epoch)))
-        logging.info("the best accuracy model will be saved to '{}'".format(best_file))
+        logging.info("the best F1 score model will be saved to '{}'".format(best_file))
 
     # save model state for best model
     del state['opt_state']
