@@ -286,7 +286,7 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
                 with timer('test'):
                     test(epoch, test_loader, False)
 
-            if epoch % 25 == 0 or epoch == num_epochs:
+            if epoch % 10 == 0 or epoch == num_epochs:
                 logging.info('timings: {}'.format(', '.join('{}: {:.3f}s'.format(*tt) for tt in
                                                             zip(timers.keys(), timers.values()))))
 

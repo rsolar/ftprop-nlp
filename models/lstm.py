@@ -24,7 +24,6 @@ class LSTM(nn.Module):
         # input: (m, hidden_size)
         self.classifier = nn.Sequential(OrderedDict([
             ('fc3', nn.Linear(self.hidden_size, num_classes)),
-            ('softmax3', nn.Softmax(dim=1)),
         ]))
 
     def forward(self, x):

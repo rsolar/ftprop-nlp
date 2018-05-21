@@ -32,9 +32,9 @@ class LSTM_CNN(nn.Module):
                                   nn.Sequential(OrderedDict([
                                       ('conv3' + chr(ord('a') + i), nn.Conv2d(1, self.num_filters,
                                                                               (filter_size, self.hidden_size))),
-                                      ('nonlin3' + chr(ord('a') + i), nonlin()),
                                       ('maxpool3' + chr(ord('a') + i), nn.MaxPool2d((self.seq_len - filter_size + 1, 1),
                                                                                     stride=1)),
+                                      ('nonlin3' + chr(ord('a') + i), nonlin()),
                                   ])))
         # output: (m, total_num_filters, 1, 1)
 
@@ -42,7 +42,6 @@ class LSTM_CNN(nn.Module):
         self.classifier = nn.Sequential(OrderedDict([
             ('dropout4', nn.Dropout(0.5)),
             ('fc4', nn.Linear(self.total_num_filters, num_classes)),
-            ('softmax4', nn.Softmax(dim=1)),
         ]))
 
     def forward(self, x):

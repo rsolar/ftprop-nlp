@@ -16,7 +16,7 @@ def soft_hinge(Z, T):
 @unique
 class TPRule(Enum):
     SSTE = 2
-    SoftHinge = 3
+    SoftHinge = 5
 
     @staticmethod
     def sste_backward(Z, dH, T, a=0, b=1):
