@@ -25,6 +25,7 @@ from models.cnn import CNN
 from models.cnn_lstm import CNN_LSTM
 from models.lstm import LSTM
 from models.lstm_cnn import LSTM_CNN
+from models.textcnn import TextCNN
 from utils.datasethelper import create_datasets
 from utils.metric import Metric
 from utils.timercontext import timer_context
@@ -45,7 +46,7 @@ def main():
     parser.add_argument('--test-model', type=str,
                         help='specify the filename of a pre-trained model,  which will be loaded '
                              'and evaluated on the test set of the specified dataset')
-    parser.add_argument('--arch', type=str, choices=('cnn', 'lstm', 'cnn-lstm', 'lstm-cnn'),
+    parser.add_argument('--arch', type=str, choices=('cnn', 'lstm', 'cnn-lstm', 'lstm-cnn', 'textcnn'),
                         help='model architecture to use')
     parser.add_argument('--nonlin', type=str, choices=('sign11', 'qrelu', 'relu', 'threshrelu'),
                         help='non-linearity to use in the specified architecture')
@@ -387,6 +388,8 @@ def create_model(args, num_classes, embedding_vector):
         model = CNN_LSTM(input_shape, num_classes, embedding_vector, nonlin=nonlin)
     elif args.arch == 'lstm-cnn':
         model = LSTM_CNN(input_shape, num_classes, embedding_vector, nonlin=nonlin)
+    elif args.arch == 'textcnn':
+        model = TextCNN(input_shape, num_classes, embedding_vector, nonlin=nonlin)
     else:
         raise NotImplementedError('other models not yet supported')
 
