@@ -31,6 +31,7 @@ def create_datasets(ds_name, batch_size, no_val_set, use_cuda, seed):
     return train_loader, val_loader, test_loader, num_classes, embedding_vector
 
 
+# outdated
 def create_tsad_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.01, test_pct=0.01,
                         data_dir='', download=False, create_val=True, max_len=60):
     device = -1
@@ -80,12 +81,11 @@ def create_sentiment140_dataset(batch_size, use_cuda, seed, ds=None, val_pct=0.0
 
     all_ds = ds(data_dir, text_field, label_field, train=True, download=download)
 
-    train_ds, test_ds = all_ds.split(split_ratio=1.0 - test_pct, stratified=True, strata_field='label')
     if create_val:
-        total_len = len(train_ds)
-        train_ds, val_ds = train_ds.split(split_ratio=1.0 - val_pct, stratified=True, strata_field='label')
-        assert len(train_ds) + len(val_ds) == total_len
+        train_ds, val_ds, test_ds = all_ds.split(split_ratio=[1.0 - test_pct - val_pct, test_pct, val_pct],
+                                                 stratified=True, strata_field='label')
     else:
+        train_ds, test_ds = all_ds.split(split_ratio=1.0 - test_pct, stratified=True, strata_field='label')
         val_ds = None
 
     text_field.build_vocab(train_ds, vectors="glove.6B.50d")

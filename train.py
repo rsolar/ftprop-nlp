@@ -250,9 +250,9 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
                 fn = ((top_pred == 0) & (target.data == 1)).cpu().sum().item()
 
                 acc = 100.0 * (tp + tn) / (tp + tn + fp + fn)
-                p = tp / (tp + fp)
-                r = tp / (tp + fn)
-                f1 = 2 * r * p / (r + p)
+                p = tp / (tp + fp) if tp + fp else 0
+                r = tp / (tp + fn) if tp + fn else 0
+                f1 = 2 * p * r / (p + r) if p + r else 0.0
 
                 metrics['train']['loss'].update(lossf, epoch)
                 metrics['train']['acc'].update(acc, epoch)
@@ -271,13 +271,10 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
         ds_size = len(data_loader.dataset)
         test_loss, acc, p, r, f1 = test_model(model, loss_function, data_loader, use_cuda, False)
         with timer('output'):
-            if is_val:
-                print('')
             logging.info('{} set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%), '
                          "p = {:.4f}, r = {:.4f}, F1 = {:.4f}"
                          .format('Validation' if is_val else 'Test', test_loss,
                                  round(acc * ds_size / 100), ds_size, acc, p, r, f1))
-            print('')
 
         ds_name = 'val' if is_val else 'test'
         metrics[ds_name]['loss'].update(test_loss, epoch)
@@ -358,9 +355,9 @@ def test_model(model, loss_function, data_loader, use_cuda, log_results=True):
     assert tp + tn + fp + fn == nsamples
     loss /= nsamples
     acc = 100.0 * (tp + tn) / nsamples
-    p = tp / (tp + fp)
-    r = tp / (tp + fn)
-    f1 = 2 * r * p / (r + p)
+    p = tp / (tp + fp) if tp + fp else 0
+    r = tp / (tp + fn) if tp + fn else 0
+    f1 = 2 * p * r / (p + r) if p + r else 0.0
 
     if log_results:
         log_str = 'Test set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%), ' \
