@@ -13,7 +13,9 @@ class Sentiment140(TabularDataset):
 
     def __init__(self, root, text_field, label_field, train=True, download=False, **kwargs):
         if download:
-            self.download(root)
+            root = self.download(root)
+        else:
+            root = os.path.join(root, self.dirname)
 
         filename = os.path.join(root, self.train_name)
         utf8_filename = os.path.join(root, self.train_utf8_name)

@@ -12,7 +12,9 @@ class TSAD(TabularDataset):
 
     def __init__(self, root, text_field, label_field, download=False, **kwargs):
         if download:
-            self.download(root)
+            root = self.download(root)
+        else:
+            root = os.path.join(root, self.dirname)
 
         fields = [('', None),
                   ('label', label_field),

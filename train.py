@@ -21,6 +21,7 @@ from torch.autograd import Variable
 
 import targetprop
 from activations import Sign11, qReLU, ThresholdReLU
+from models.bilstm import BiLSTM
 from models.cnn import CNN
 from models.cnn_lstm import CNN_LSTM
 from models.lstm import LSTM
@@ -37,7 +38,7 @@ best_model_name = 'best_model.pth.tar'
 def main():
     parser = argparse.ArgumentParser()
 
-    parser.add_argument('--ds', type=str, default='sentiment140', choices=('sentiment140', 'tsad'),
+    parser.add_argument('--ds', type=str, default='sentiment140', choices=('sentiment140', 'tsad', 'semeval'),
                         help='dataset on which to train')
     parser.add_argument('--no-val', action='store_true', default=False,
                         help='if specified, do not create a validation set and use it to choose the best model, '
@@ -46,7 +47,7 @@ def main():
     parser.add_argument('--test-model', type=str,
                         help='specify the filename of a pre-trained model,  which will be loaded '
                              'and evaluated on the test set of the specified dataset')
-    parser.add_argument('--arch', type=str, choices=('cnn', 'lstm', 'cnn-lstm', 'lstm-cnn', 'textcnn'),
+    parser.add_argument('--arch', type=str, choices=('cnn', 'lstm', 'cnn-lstm', 'lstm-cnn', 'textcnn', 'bilstm'),
                         help='model architecture to use')
     parser.add_argument('--nonlin', type=str, choices=('sign11', 'qrelu', 'relu', 'threshrelu'),
                         help='non-linearity to use in the specified architecture')
@@ -85,6 +86,8 @@ def main():
         print('ERROR: arch, nonlin, and lr arguments must be specified\n')
         parser.print_help()
         exit(-1)
+
+    assert (args.ds == 'semeval') == (args.arch == 'bilstm')
 
     uses_tp = (args.nonlin == 'sign11' or args.nonlin == 'qrelu')
 
@@ -151,6 +154,10 @@ def main():
                'p': Metric('p', 0.0, True),
                'r': Metric('r', 0.0, True),
                'f1': Metric('f1', 0.0, True)}
+    if args.ds == 'semeval':
+        metrics['f_0'] = Metric('f_0', 0.0, True)
+        metrics['f_1'] = Metric('f_1', 0.0, True)
+        metrics['f_avg'] = Metric('f_avg', 0.0, True)
     metrics = {'train': deepcopy(metrics), 'val': deepcopy(metrics), 'test': deepcopy(metrics)}
 
     # ----- create loss function -----
@@ -186,14 +193,16 @@ def main():
 
         logging.info('testing on trained model ({})'.format('final' if args.no_val else 'best'))
         model.load_state_dict(best_model_state)
-        test_model(model, loss_function, test_loader, args.cuda, True)
+        test_model(model, loss_function, test_loader, args.cuda, True,
+                   use_target=args.ds == 'semeval', use_f=args.ds == 'semeval')
 
     else:
         model = create_model(args, num_classes, embedding_vector)
         logging.info("loading test model from '{}'".format(args.test_model))
         state = torch.load(args.test_model)
         model.load_state_dict(state['model_state'])
-        test_model(model, loss_function, test_loader, args.cuda, True)
+        test_model(model, loss_function, test_loader, args.cuda, True,
+                   use_target=args.ds == 'semeval', use_f=args.ds == 'semeval')
 
     print('')
     logging.info("log file: '{}.log'".format(args.save))
@@ -218,18 +227,30 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
         ds_size = len(train_loader.dataset)
         num_batches = int(np.ceil(float(ds_size) / train_loader.batch_size))
 
-        for batch_idx, (data, target) in enumerate(train_loader):
+        for batch_idx, (data, label) in enumerate(train_loader):
+            if args.ds == 'semeval':
+                data, target = data
+            else:
+                target = None
+
             if use_cuda:
                 with timer('cuda'):
-                    data, target = data.cuda(), target.cuda()
-            data, target = Variable(data), Variable(target)
+                    data, label = data.cuda(), label.cuda()
+                    if args.ds == 'semeval':
+                        target = target.cuda()
+            data, label = Variable(data), Variable(label)
+            if args.ds == 'semeval':
+                target = Variable(target)
 
             with timer('forward'):
                 optimizer.zero_grad()
-                output = model(data)
+                if args.ds == 'semeval':
+                    output = model(data, target)
+                else:
+                    output = model(data)
 
             with timer('loss'):
-                loss = loss_function(output, target)
+                loss = loss_function(output, label)
                 lossf = loss.data.squeeze().item()
                 output = output.data
 
@@ -240,18 +261,18 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
                 optimizer.step()
 
             with timer('output'):
-                assert target.dim() == 1
+                assert label.dim() == 1
                 top_pred = output.max(dim=1)[1]
-                # acc = 100.0 * top_pred.eq(target.data).float().cpu().mean().item()
+                # acc = 100.0 * top_pred.eq(label.data).float().cpu().mean().item()
 
-                tp = ((top_pred == 1) & (target.data == 1)).cpu().sum().item()
-                tn = ((top_pred == 0) & (target.data == 0)).cpu().sum().item()
-                fp = ((top_pred == 1) & (target.data == 0)).cpu().sum().item()
-                fn = ((top_pred == 0) & (target.data == 1)).cpu().sum().item()
+                tp = ((top_pred == 1) & (label.data == 1)).cpu().sum().item()
+                tn = ((top_pred != 1) & (label.data != 1)).cpu().sum().item()
+                fp = ((top_pred == 1) & (label.data != 1)).cpu().sum().item()
+                fn = ((top_pred != 1) & (label.data == 1)).cpu().sum().item()
 
                 acc = 100.0 * (tp + tn) / (tp + tn + fp + fn)
-                p = tp / (tp + fp) if tp + fp else 0
-                r = tp / (tp + fn) if tp + fn else 0
+                p = tp / (tp + fp) if tp + fp else 0.0
+                r = tp / (tp + fn) if tp + fn else 0.0
                 f1 = 2 * p * r / (p + r) if p + r else 0.0
 
                 metrics['train']['loss'].update(lossf, epoch)
@@ -259,22 +280,38 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
                 metrics['train']['p'].update(p, epoch)
                 metrics['train']['r'].update(r, epoch)
                 metrics['train']['f1'].update(f1, epoch)
+                if args.ds == 'semeval':
+                    f_0 = f_score(top_pred, label.data, 0)
+                    f_1 = f_score(top_pred, label.data, 1)
+                    f_avg = (f_0 + f_1) / 2.0
+                    f = f_0, f_1, f_avg
+                    metrics['train']['f_0'].update(f_0, epoch)
+                    metrics['train']['f_1'].update(f_1, epoch)
+                    metrics['train']['f_avg'].update(f_avg, epoch)
+                else:
+                    f = None
 
             with timer('output'):
                 if num_batches <= 5 or (batch_idx % (num_batches // 5)) == 0:
                     logging.info("Train epoch {} [{}/{} ({:.0f}%)]:\t loss = {:.6f}, accuracy = {:.2f}, "
-                                 "p = {:.4f}, r = {:.4f}, F1 = {:.4f}"
+                                 "p = {:.4f}, r = {:.4f}, F1 = {:.4f}{}"
                                  .format(epoch, (batch_idx + 1) * len(data), ds_size,
-                                         100. * (batch_idx + 1) / len(train_loader), lossf, acc, p, r, f1))
+                                         100. * (batch_idx + 1) / len(train_loader), lossf, acc, p, r, f1,
+                                         ", F_0 = {:.4f}, F_1 = {:.4f}, F_avg = {:.4f}".format(*f)
+                                         if args.ds == 'semeval' else ""))
 
     def test(epoch, data_loader, is_val):
         ds_size = len(data_loader.dataset)
-        test_loss, acc, p, r, f1 = test_model(model, loss_function, data_loader, use_cuda, False)
+        test_loss, acc, p, r, f1, f = test_model(model, loss_function, data_loader, use_cuda, False,
+                                                 use_target=args.ds == 'semeval', use_f=args.ds == 'semeval')
         with timer('output'):
             logging.info('{} set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%), '
-                         "p = {:.4f}, r = {:.4f}, F1 = {:.4f}"
+                         "p = {:.4f}, r = {:.4f}, F1 = {:.4f}{}"
                          .format('Validation' if is_val else 'Test', test_loss,
-                                 round(acc * ds_size / 100), ds_size, acc, p, r, f1))
+                                 round(acc * ds_size / 100), ds_size, acc, p, r, f1,
+                                 ", F_0 = {:.4f}, F_1 = {:.4f}, F_avg = {:.4f}".format(*f)
+                                 if args.ds == 'semeval' else ""))
+            print('')
 
         ds_name = 'val' if is_val else 'test'
         metrics[ds_name]['loss'].update(test_loss, epoch)
@@ -282,6 +319,12 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
         metrics[ds_name]['p'].update(p, epoch)
         metrics[ds_name]['r'].update(r, epoch)
         is_best = metrics[ds_name]['f1'].update(f1, epoch)
+        if args.ds == 'semeval':
+            f_0, f_1, f_avg = f
+            metrics[ds_name]['f_0'].update(f_0, epoch)
+            metrics[ds_name]['f_1'].update(f_1, epoch)
+            is_best = metrics[ds_name]['f_avg'].update(f_avg, epoch)
+
         nonlocal best_model_state
         if is_val and is_best:
             best_model_state = deepcopy(model.state_dict())
@@ -319,9 +362,14 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
     finally:
         for ds_name in ['train'] + (['val'] if val_loader is not None else []) \
                        + (['test'] if test_loader is not None else []):
-            logging.info('best {} F1 score: {:.4f} occurred on epoch {} / {}'
-                         .format(ds_name, metrics[ds_name]['f1'].val,
-                                 metrics[ds_name]['f1'].tag, epoch))
+            if args.ds == 'semeval':
+                logging.info('best {} F_avg score: {:.4f} occurred on epoch {} / {}'
+                             .format(ds_name, metrics[ds_name]['f_avg'].val,
+                                     metrics[ds_name]['f_avg'].tag, epoch))
+            else:
+                logging.info('best {} F1 score: {:.4f} occurred on epoch {} / {}'
+                             .format(ds_name, metrics[ds_name]['f1'].val,
+                                     metrics[ds_name]['f1'].tag, epoch))
 
         logging.info('timings: {}'.format(', '.join('{}: {:.3f}s'.format(*tt) for tt in
                                                     zip(timers.keys(), timers.values()))))
@@ -333,39 +381,68 @@ def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_l
     return best_model_state
 
 
-def test_model(model, loss_function, data_loader, use_cuda, log_results=True):
+def test_model(model, loss_function, data_loader, use_cuda, log_results=True, use_target=False, use_f=False):
     model.eval()
     loss, nsamples, tp, tn, fp, fn = 0, len(data_loader.dataset), 0, 0, 0, 0
+    top_pred_all, label_all = [], []
     with torch.no_grad():
-        for data, target in data_loader:
+        for data, label in data_loader:
+            if use_target:
+                data, target = data
+            else:
+                target = None
+
             if use_cuda:
-                data, target = data.cuda(), target.cuda()
-            data, target = Variable(data), Variable(target)
-            output = model(data)
-            batch_loss = torch.squeeze(loss_function(output, target)).item()
+                data, label = data.cuda(), label.cuda()
+                if use_target:
+                    target = target.cuda()
+
+            data, label = Variable(data), Variable(label)
+            if use_target:
+                target = Variable(target)
+
+            if use_target:
+                output = model(data, target)
+            else:
+                output = model(data)
+
+            batch_loss = torch.squeeze(loss_function(output, label)).item()
             loss += batch_loss * data.size(0)
-            output, target = output.data, target.data
-            # num_correct += output.max(dim=1)[1].eq(target).float().cpu().sum().item()
+            output, label = output.data, label.data
+            # num_correct += output.max(dim=1)[1].eq(label).float().cpu().sum().item()
             top_pred = output.max(dim=1)[1]
-            tp += ((top_pred == 1) & (target == 1)).cpu().sum().item()
-            tn += ((top_pred == 0) & (target == 0)).cpu().sum().item()
-            fp += ((top_pred == 1) & (target == 0)).cpu().sum().item()
-            fn += ((top_pred == 0) & (target == 1)).cpu().sum().item()
+            tp += ((top_pred == 1) & (label.data == 1)).cpu().sum().item()
+            tn += ((top_pred != 1) & (label.data != 1)).cpu().sum().item()
+            fp += ((top_pred == 1) & (label.data != 1)).cpu().sum().item()
+            fn += ((top_pred != 1) & (label.data == 1)).cpu().sum().item()
+            if use_f:
+                top_pred_all.append(top_pred.clone())
+                label_all.append(label.data.clone())
 
     assert tp + tn + fp + fn == nsamples
     loss /= nsamples
     acc = 100.0 * (tp + tn) / nsamples
-    p = tp / (tp + fp) if tp + fp else 0
-    r = tp / (tp + fn) if tp + fn else 0
+    p = tp / (tp + fp) if tp + fp else 0.0
+    r = tp / (tp + fn) if tp + fn else 0.0
     f1 = 2 * p * r / (p + r) if p + r else 0.0
+    if use_f:
+        top_pred = torch.cat(top_pred_all)
+        label = torch.cat(label_all)
+        f_0 = f_score(top_pred, label, 0)
+        f_1 = f_score(top_pred, label, 1)
+        f_avg = (f_0 + f_1) / 2.0
+        f = f_0, f_1, f_avg
+    else:
+        f = None
 
     if log_results:
         log_str = 'Test set: average loss = {:.4f}, accuracy = {}/{} ({:.2f}%), ' \
-                  'p = {:.4f}, r = {:.4f}, F1 = {:.4f}'\
-            .format(loss, tp + tn, nsamples, acc, p, r, f1)
+                  'p = {:.4f}, r = {:.4f}, F1 = {:.4f}{}' \
+            .format(loss, tp + tn, nsamples, acc, p, r, f1,
+                    ", F_0 = {:.4f}, F_1 = {:.4f}, F_avg = {:.4f}\n".format(*f) if use_f else "\n")
         logging.info(log_str)
 
-    return loss, acc, p, r, f1
+    return loss, acc, p, r, f1, f
 
 
 def get_loss_function(loss_str):
@@ -404,7 +481,9 @@ def create_model(args, num_classes, embedding_vector):
 
     # input size
     if args.ds == 'sentiment140' or args.ds == 'tsad':
-        input_shape = (1, 60, 50)
+        input_shape, target_shape = (1, 60, 50), None
+    elif args.ds == 'semeval':
+        input_shape, target_shape = (1, 60, 100), (1, 6, 100)
     else:
         raise NotImplementedError('no other datasets currently supported')
 
@@ -419,6 +498,8 @@ def create_model(args, num_classes, embedding_vector):
         model = LSTM_CNN(input_shape, num_classes, embedding_vector, nonlin=nonlin)
     elif args.arch == 'textcnn':
         model = TextCNN(input_shape, num_classes, embedding_vector, nonlin=nonlin)
+    elif args.arch == 'bilstm':
+        model = BiLSTM(input_shape, target_shape, num_classes, embedding_vector, nonlin=nonlin)
     else:
         raise NotImplementedError('other models not yet supported')
 
@@ -433,6 +514,17 @@ def create_model(args, num_classes, embedding_vector):
         model.cuda()
 
     return model
+
+
+def f_score(top_pred, label, target):
+    tp = ((top_pred == target) & (label == target)).cpu().sum().item()
+    fp = ((top_pred == target) & (label != target)).cpu().sum().item()
+    fn = ((top_pred != target) & (label == target)).cpu().sum().item()
+
+    p = tp / (tp + fp) if tp + fp else 0.0
+    r = tp / (tp + fn) if tp + fn else 0.0
+    f = 2 * p * r / (p + r) if p + r else 0.0
+    return f
 
 
 def checkpoint_model(epoch, model, opt, args, log_dir, metrics, timers, is_best):
