@@ -21,7 +21,7 @@ class SemEval(TabularDataset):
         utf8_filename = os.path.join(root, self.train_utf8_name)
         if not os.path.isfile(utf8_filename):
             with open(filename, 'rb') as f, open(utf8_filename, 'wb') as fw:
-                fw.write(f.read().decode('utf-8').encode('utf-8'))
+                fw.write(f.read().decode('latin-1').encode('utf-8'))
 
         fields = [('text', text_field),
                   ('target', target_field),
