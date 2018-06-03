@@ -199,7 +199,7 @@ def main():
     else:
         model = create_model(args, num_classes, embedding_vector)
         logging.info("loading test model from '{}'".format(args.test_model))
-        state = torch.load(args.test_model)
+        state = torch.load(args.test_model, map_location='cpu')
         model.load_state_dict(state['model_state'])
         test_model(model, loss_function, test_loader, args.cuda, True,
                    use_target=args.ds == 'semeval', use_f=args.ds == 'semeval')

@@ -102,3 +102,4 @@ ENV/
 .vector_cache/
 data/
 logs/
+experiments/
