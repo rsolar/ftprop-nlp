@@ -208,7 +208,7 @@ def main():
     logging.info("log file: '{}.log'".format(args.save))
     logging.info("log dir: '{}'".format(args.save))
     if not args.test_model:
-        logging.info("best F1 score model: '{}'".format(os.path.join(args.save, best_model_name)))
+        logging.info("best F score model: '{}'".format(os.path.join(args.save, best_model_name)))
 
 
 def train_model(num_epochs, model, optimizer, loss_function, train_loader, val_loader, test_loader,
